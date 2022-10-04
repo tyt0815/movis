@@ -15,7 +15,7 @@ from data_utils import get_std, get_mean
 
 if __name__ == '__main__':
 
-    MODEL_NAME = 'best_model.pth'
+    MODEL_NAME = './epochs/best_model.pth'
     IMAGE_NAME = 'image.jpg'
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

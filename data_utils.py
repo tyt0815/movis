@@ -1,6 +1,3 @@
-# import torch
-# from torchvision import transforms
-
 import numpy as np
 from numpy.lib.type_check import imag
 import glob
@@ -8,42 +5,56 @@ from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 import os
 
+import torch
+from tqdm import tqdm
+
 
 def dataset_load(path, type='train'):
-    path = path+'/원천데이터'
+    if type == 'train':
+        path = path + '/1.Training/원천데이터'
+    elif type == 'val':
+        path = path + '/2.Validation/원천데이터'
+
     car_dataset = []
     car_label = []
+    car_label_num = []
 
     brand_list = os.listdir(path)
-    # colab 환경용. colab이 아닐시 주석처리
+    # 맥환경에는 .DS_Store라는 파일이 들어감 제외해 준다.
     if '.DS_Store' in brand_list:
         brand_list.remove('.DS_Store')
 
     for i, brand in enumerate(brand_list):
-        # print(i, brand)
         model_list = os.listdir(path+'/'+brand)
-        # colab 환경용. colab이 아닐시 주석처리
+
         if '.DS_Store' in model_list:
             model_list.remove('.DS_Store')
-        # print(model_list)
+
         for model in model_list:
             year_color_list = os.listdir(path+'/'+brand+'/'+model)
-            # for year_color in year_color_list:
-            #     dataset = glob.glob(path+'/'+brand+'/'+model+'/'+year_color + '/*.jpg')
-            #     car_dataset.append(dataset)
-            #     car_label.append(brand+'_'+model+'_'+year_color)
-            dataset = []
+
+            if '.DS_Store' in year_color_list:
+                year_color_list.remove('.DS_Store')
+
             for year_color in year_color_list:
-                dataset += glob.glob(path+'/'+brand+'/' +
-                                     model+'/'+year_color + '/*.jpg')
-            car_dataset.append(dataset)
-            car_label.append(brand+'_'+model)
+                dataset = glob.glob(path+'/'+brand+'/' +
+                                    model+'/'+year_color + '/*.jpg')
+                if len(dataset) == 0:
 
-    return (car_dataset, car_label)
+                    continue
+                car_dataset.append(dataset)
+                car_label.append(brand+'_'+model+'_'+year_color)
+                car_label_num.append(len(dataset))
+                # if len(dataset) == 6:
+                #     print(brand+'_'+model+'_'+year_color)
+                #     print(car_dataset[-1])
+                #     print(car_label[-1])
+                #     print(car_label_num[-1])
+                #     print(len(car_dataset), len(car_label), len(car_label_num))
 
-# car_dataset , car_label = dataset_load('./drive/MyDrive/car_sample')
-# print(car_label)
-# print(car_dataset)
+    torch.save(car_label, './car_list')
+
+    return (car_dataset, car_label_num)
 
 
 class TrainDatasetFromFolder(Dataset):
@@ -54,22 +65,11 @@ class TrainDatasetFromFolder(Dataset):
 
         self.transform = None
 
-        # self.kia_path = path + '/kia/train'
-        # self.bmw_path = path + '/bmw/train'
-
-        # self.kia_img_list = glob.glob(self.kia_path + '/*.jpg')
-        # self.bmw_img_list = glob.glob(self.bmw_path + '/*.jpg')
-
-        # self.img_list = self.kia_img_list + self.bmw_img_list
-        # self.class_list = [0] * len (self.kia_img_list)+ [1]*len(self.bmw_img_list)
-
-        self.car_dataset, self.car_label = dataset_load(self.path, 'train')
+        self.car_dataset, self.car_label_num = dataset_load(self.path, 'train')
 
         for i, img in enumerate(self.car_dataset):
             self.img_list += img
-            self.class_list += [i] * len(img)
-            # for j in range(len(img)):
-            #     self.class_list.append(self.car_label[i])
+            self.class_list += [i] * self.car_label_num[i]
 
     def __len__(self):
         return len(self.img_list)
@@ -93,22 +93,11 @@ class ValDatasetFromFolder(Dataset):
 
         self.transform = None
 
-        # self.kia_path = path + '/kia/test'
-        # self.bmw_path = path + '/bmw/test'
-
-        # self.kia_img_list = glob.glob(self.kia_path + '/*.jpg')
-        # self.bmw_img_list = glob.glob(self.bmw_path + '/*.jpg')
-
-        # self.img_list = self.kia_img_list + self.bmw_img_list
-        # self.class_list = [0] * len (self.kia_img_list)+ [1]*len(self.bmw_img_list)
-
-        self.car_dataset, self.car_label = dataset_load(self.path, 'train')
+        self.car_dataset, self.car_label_num = dataset_load(self.path, 'val')
 
         for i, img in enumerate(self.car_dataset):
             self.img_list += img
-            self.class_list += [i] * len(img)
-            # for j in range(len(img)):
-            #     self.class_list.append(self.car_label[i])
+            self.class_list += [i] * self.car_label_num[i]
 
     def __len__(self):
         return len(self.img_list)
@@ -126,19 +115,39 @@ class ValDatasetFromFolder(Dataset):
 
 # 채널 별 mean 계산
 
-def get_mean(dataset):
-    meanRGB = [np.mean(np.array(image), axis=(1, 2)) for image, _ in dataset]
-    meanR = np.mean([m[0] for m in meanRGB])
-    meanG = np.mean([m[1] for m in meanRGB])
-    meanB = np.mean([m[2] for m in meanRGB])
+def get_mean(dataset, type):
+    path = './meanstd/'+type+'.mean'
+
+    if os.path.isfile(path):
+        print('Load %s dataset mean' % (type))
+        return torch.load(path)
+
+    print('Get %s dataset mean...' % (type))
+    meanRGB = [np.mean(np.array(image), axis=(1, 2))
+               for image, _ in tqdm(dataset, desc='meanRGB')]
+    meanR = np.mean([m[0] for m in tqdm(meanRGB, desc='meanR')])
+    meanG = np.mean([m[1] for m in tqdm(meanRGB, desc='meanG')])
+    meanB = np.mean([m[2] for m in tqdm(meanRGB, desc='meanB')])
+
+    torch.save([meanR, meanG, meanB], path)
     return [meanR, meanG, meanB]
 
 # 채널 별 str 계산
 
 
-def get_std(dataset):
-    stdRGB = [np.std(np.array(image), axis=(1, 2)) for image, _ in dataset]
-    stdR = np.mean([s[0] for s in stdRGB])
-    stdG = np.mean([s[1] for s in stdRGB])
-    stdB = np.mean([s[2] for s in stdRGB])
+def get_std(dataset, type):
+    path = './meanstd/'+type+'.std'
+
+    if os.path.isfile(path):
+        print('Load %s dataset std' % (type))
+        return torch.load(path)
+
+    print('Get %s dataset std...' % (type))
+    stdRGB = [np.std(np.array(image), axis=(1, 2))
+              for image, _ in tqdm(dataset, desc='stdRGB')]
+    stdR = np.mean([s[0] for s in tqdm(stdRGB, desc='stdR')])
+    stdG = np.mean([s[1] for s in tqdm(stdRGB, desc='stdG')])
+    stdB = np.mean([s[2] for s in tqdm(stdRGB, desc='stdB')])
+
+    torch.save([stdR, stdG, stdB], path)
     return [stdR, stdG, stdB]
