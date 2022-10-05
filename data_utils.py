@@ -8,6 +8,8 @@ import os
 import torch
 from tqdm import tqdm
 
+from os.path import isdir
+
 
 def dataset_load(path, type='train'):
     if type == 'train':
@@ -20,56 +22,61 @@ def dataset_load(path, type='train'):
     car_label_num = []
 
     brand_list = os.listdir(path)
-    # 맥환경에는 .DS_Store라는 파일이 들어감 제외해 준다.
-    if '.DS_Store' in brand_list:
-        brand_list.remove('.DS_Store')
 
     for i, brand in enumerate(brand_list):
+        if isdir(path+'/'+brand) == False:
+            continue
+
         model_list = os.listdir(path+'/'+brand)
 
-        if '.DS_Store' in model_list:
-            model_list.remove('.DS_Store')
-
         for model in model_list:
+            if isdir(path+'/'+brand+'/'+model) == False:
+                continue
             year_color_list = os.listdir(path+'/'+brand+'/'+model)
 
-            if '.DS_Store' in year_color_list:
-                year_color_list.remove('.DS_Store')
-
             for year_color in year_color_list:
+
+                if isdir(path+'/'+brand+'/'+model+'/'+year_color) == False:
+                    continue
+
                 dataset = glob.glob(path+'/'+brand+'/' +
                                     model+'/'+year_color + '/*.jpg')
-                if len(dataset) == 0:
 
+                if len(dataset) == 0:
                     continue
+
                 car_dataset.append(dataset)
                 car_label.append(brand+'_'+model+'_'+year_color)
                 car_label_num.append(len(dataset))
-                # if len(dataset) == 6:
-                #     print(brand+'_'+model+'_'+year_color)
-                #     print(car_dataset[-1])
-                #     print(car_label[-1])
-                #     print(car_label_num[-1])
-                #     print(len(car_dataset), len(car_label), len(car_label_num))
 
     torch.save(car_label, './car_list')
 
-    return (car_dataset, car_label_num)
+    img_list = []
+    class_list = []
+
+    for i, img in enumerate(car_dataset):
+        img_list += img
+        class_list += [i] * car_label_num[i]
+
+    return (img_list, class_list)
+    # return (car_dataset,car_label_num)
 
 
 class TrainDatasetFromFolder(Dataset):
     def __init__(self, path):
         self.path = path
-        self.img_list = []
-        self.class_list = []
+        # self.img_list = []
+        # self.class_list = []
 
         self.transform = None
 
-        self.car_dataset, self.car_label_num = dataset_load(self.path, 'train')
+        self.img_list, self.class_list = dataset_load(self.path, 'train')
 
-        for i, img in enumerate(self.car_dataset):
-            self.img_list += img
-            self.class_list += [i] * self.car_label_num[i]
+        # self.car_dataset, self.car_label_num = dataset_load(self.path, 'train')
+
+        # for i, img in enumerate(self.car_dataset):
+        #     self.img_list += img
+        #     self.class_list += [i] * self.car_label_num[i]
 
     def __len__(self):
         return len(self.img_list)
@@ -88,16 +95,18 @@ class TrainDatasetFromFolder(Dataset):
 class ValDatasetFromFolder(Dataset):
     def __init__(self, path):
         self.path = path
-        self.img_list = []
-        self.class_list = []
+        # self.img_list = []
+        # self.class_list = []
 
         self.transform = None
 
-        self.car_dataset, self.car_label_num = dataset_load(self.path, 'val')
+        self.img_list, self.class_list = dataset_load(self.path, 'val')
 
-        for i, img in enumerate(self.car_dataset):
-            self.img_list += img
-            self.class_list += [i] * self.car_label_num[i]
+        # self.car_dataset, self.car_label_num = dataset_load(self.path, 'val')
+
+        # for i, img in enumerate(self.car_dataset):
+        #     self.img_list += img
+        #     self.class_list += [i] * self.car_label_num[i]
 
     def __len__(self):
         return len(self.img_list)
@@ -115,39 +124,56 @@ class ValDatasetFromFolder(Dataset):
 
 # 채널 별 mean 계산
 
-def get_mean(dataset, type):
+def get_mean(dataset):
+
+    print('Get %s dataset mean...' % (type))
+    meanRGB = [np.mean(np.array(image), axis=(1, 2))
+               for image, _ in tqdm(dataset, desc='meanRGB')]
+    meanR = np.mean([m[0] for m in tqdm(meanRGB, desc='meanR  ')])
+    meanG = np.mean([m[1] for m in tqdm(meanRGB, desc='meanG  ')])
+    meanB = np.mean([m[2] for m in tqdm(meanRGB, desc='meanB  ')])
+
+    # torch.save([meanR, meanG, meanB], path)
+    return [meanR, meanG, meanB]
+
+# 채널 별 str 계산
+
+
+def get_std(dataset):
+
+    print('Get %s dataset std...' % (type))
+    stdRGB = [np.std(np.array(image), axis=(1, 2))
+              for image, _ in tqdm(dataset, desc='stdRGB')]
+    stdR = np.mean([s[0] for s in tqdm(stdRGB, desc='stdR  ')])
+    stdG = np.mean([s[1] for s in tqdm(stdRGB, desc='stdG  ')])
+    stdB = np.mean([s[2] for s in tqdm(stdRGB, desc='stdB  ')])
+
+    return [stdR, stdG, stdB]
+
+
+def load_mean(dataset, type):
     path = './meanstd/'+type+'.mean'
 
     if os.path.isfile(path):
         print('Load %s dataset mean' % (type))
         return torch.load(path)
 
-    print('Get %s dataset mean...' % (type))
-    meanRGB = [np.mean(np.array(image), axis=(1, 2))
-               for image, _ in tqdm(dataset, desc='meanRGB')]
-    meanR = np.mean([m[0] for m in tqdm(meanRGB, desc='meanR')])
-    meanG = np.mean([m[1] for m in tqdm(meanRGB, desc='meanG')])
-    meanB = np.mean([m[2] for m in tqdm(meanRGB, desc='meanB')])
+    meanR, meanG, meanB = get_mean(dataset)
 
     torch.save([meanR, meanG, meanB], path)
+
     return [meanR, meanG, meanB]
 
-# 채널 별 str 계산
 
-
-def get_std(dataset, type):
+def load_std(dataset, type):
     path = './meanstd/'+type+'.std'
 
     if os.path.isfile(path):
         print('Load %s dataset std' % (type))
         return torch.load(path)
 
-    print('Get %s dataset std...' % (type))
-    stdRGB = [np.std(np.array(image), axis=(1, 2))
-              for image, _ in tqdm(dataset, desc='stdRGB')]
-    stdR = np.mean([s[0] for s in tqdm(stdRGB, desc='stdR')])
-    stdG = np.mean([s[1] for s in tqdm(stdRGB, desc='stdG')])
-    stdB = np.mean([s[2] for s in tqdm(stdRGB, desc='stdB')])
+    stdR, stdG, stdB = get_std(dataset)
 
     torch.save([stdR, stdG, stdB], path)
+
     return [stdR, stdG, stdB]

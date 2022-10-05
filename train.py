@@ -1,4 +1,3 @@
-# from genericpath import isfile
 import torch
 import torch.nn as nn
 from torch import optim
@@ -9,7 +8,7 @@ from torchvision import transforms
 
 from tqdm import tqdm
 
-from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, get_mean, get_std
+from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, load_mean, load_std
 
 
 def train(model, params):
@@ -21,7 +20,7 @@ def train(model, params):
     best_accurancy = 0
 
     for epoch in range(0, num_epochs):
-        for i, data in enumerate(tqdm(train_dataloader, desc='train\t'), 0):
+        for i, data in enumerate(tqdm(train_dataloader, desc='train'), 0):
             # train dataloader 로 불러온 데이터에서 이미지와 라벨을 분리
             inputs, labels = data
             inputs = inputs.to(device)
@@ -40,7 +39,7 @@ def train(model, params):
         total = 0
         correct = 0
         accuracy = []
-        for i, data in enumerate(tqdm(val_dataloader, desc='val\t'), 0):
+        for i, data in enumerate(tqdm(val_dataloader, desc='val  '), 0):
             inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -56,7 +55,7 @@ def train(model, params):
             accuracy.append(100 * correct/total)
 
         # 학습 결과 출력
-        print('\nEpoch: %d/%d, Train loss: %.6f, Val loss: %.6f, Accuracy: %.2f\n' %
+        print('Epoch: %d/%d, Train loss: %.6f, Val loss: %.6f, Accuracy: %.2f\n' %
               (epoch+1, num_epochs, train_loss.item(), val_loss, 100*correct/total))
         # torch.save(model.state_dict(), './epochs/epoch_%d.pth' % (epoch))
         # 모델 파라미터 저장
@@ -68,33 +67,32 @@ def train(model, params):
 
 if __name__ == '__main__':
 
-    batch = 64
-    lr = 0.0001
-    num_epochs = 5
-
     # 학습 환경 설정
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('\n\n********** Device = '+str(device)+' **********\n\n')
+
+    batch = 64
+    lr = 0.0001
+    num_epochs = 5
+    dataset_path = './data/car_data'
     # resnet50 모델을 사용
     model = models.resnet50(pretrained=False).to(device)
 
     # dataset
     print('Data load...')
-    dataset_path = './data/car_data/'
 
     train_dataset = TrainDatasetFromFolder(path=dataset_path)
     val_dataset = ValDatasetFromFolder(path=dataset_path)
     print('Data load complete!')
-    # print(train_dataset.car_label_num)
 
     # 이미지 크기를 임의로 128로 고정한 후, 정규화하는 과정만 진행
     print('Data transform...')
     train_transforms = transforms.Compose([transforms.Resize((128, 128)),
                                            transforms.ToTensor(),
-                                           transforms.Normalize(get_mean(train_dataset, 'train'), get_std(train_dataset, 'train'))])
+                                           transforms.Normalize(load_mean(train_dataset, 'train'), load_std(train_dataset, 'train'))])
     val_transforms = transforms.Compose([transforms.Resize((128, 128)),
                                          transforms.ToTensor(),
-                                         transforms.Normalize(get_mean(val_dataset, 'val'), get_std(val_dataset, 'val'))])
+                                         transforms.Normalize(load_mean(val_dataset, 'val'), load_std(val_dataset, 'val'))])
 
     # trainsform 정의
     train_dataset.transform = train_transforms
