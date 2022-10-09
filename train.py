@@ -15,7 +15,7 @@ from data_utils import dataset_load, std, mean
 parser = argparse.ArgumentParser(
     description='Train MOVIS (Car image classification)')
 parser.add_argument('--batch', default=128, type=int, help='batch size')
-parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
 parser.add_argument('--epochs', default=100, type=int,
                     help='train epoch number')
 parser.add_argument('--path', default='./data/car_data',
