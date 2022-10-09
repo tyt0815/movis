@@ -1,14 +1,25 @@
 import torch
 import torch.nn as nn
 from torch import optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
 from torchvision import models
 from torchvision import transforms
 
 from tqdm import tqdm
+import pandas as pd
+import argparse
 
-from data_utils import TrainDatasetFromFolder, ValDatasetFromFolder, load_mean, load_std
+from data_utils import dataset_load, std, mean
+
+parser = argparse.ArgumentParser(
+    description='Train MOVIS (Car image classification)')
+parser.add_argument('--batch', default=128, type=int, help='batch size')
+parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+parser.add_argument('--epochs', default=100, type=int,
+                    help='train epoch number')
+parser.add_argument('--path', default='./data/car_data',
+                    type=str, help='path of dataset')
 
 
 def train(model, params):
@@ -17,10 +28,16 @@ def train(model, params):
     val_dataloader = params["val_dataloader"]
     device = params["device"]
 
+    # statistics를 위한 딕셔너리 정의 및 경로설정
+    out_path = './statistics/'
+    results = {'Train loss': [], 'Val loss': [], 'Accuracy': []}
+    best_results = {'Epoch': [], 'Train loss': [],
+                    'Val loss': [], 'Accuracy': []}
+
     best_accurancy = 0
 
-    for epoch in range(0, num_epochs):
-        for i, data in enumerate(tqdm(train_dataloader, desc='train'), 0):
+    for epoch in range(0, NUM_EPOCHS):
+        for data in tqdm(train_dataloader, leave=False):
             # train dataloader 로 불러온 데이터에서 이미지와 라벨을 분리
             inputs, labels = data
             inputs = inputs.to(device)
@@ -39,14 +56,13 @@ def train(model, params):
         total = 0
         correct = 0
         accuracy = []
-        for i, data in enumerate(tqdm(val_dataloader, desc='val  '), 0):
+        for data in tqdm(val_dataloader, leave=False):
             inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
 
             # 결과값 연산
             outputs = model(inputs)
-            # print(torch.max(outputs.data, 1))
 
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -56,69 +72,91 @@ def train(model, params):
 
         # 학습 결과 출력
         print('Epoch: %d/%d, Train loss: %.6f, Val loss: %.6f, Accuracy: %.2f\n' %
-              (epoch+1, num_epochs, train_loss.item(), val_loss, 100*correct/total))
-        # torch.save(model.state_dict(), './epochs/epoch_%d.pth' % (epoch))
+              (epoch+1, NUM_EPOCHS, train_loss.item(), val_loss, 100*correct/total))
+
         # 모델 파라미터 저장
+        results['Train loss'].append(train_loss.item())
+        results['Val loss'].append(val_loss)
+        results['Accuracy'].append(100*correct/total)
+
+        # 10 epochs마다 statistics 저장
+        if epoch % 10 == 0 and epoch != 0:
+            data_frame = pd.DataFrame(
+                data={'Train loss': results['Train loss'], 'Val loss': results['Val loss'], 'Accuracy': results['Accuracy']}, index=range(1, epoch+1))
+            data_frame.to_csv(out_path+'train_results.csv',
+                              index_label='Epoch')
+
+        # 정확도가 가장 높은 모델의 parameters와 statistics 저장
         if best_accurancy < 100*correct/total:
+            best_results['Epoch'].append(epoch+1)
+            best_results['Train loss'].append(train_loss.item())
+            best_results['Val loss'].append(val_loss)
+            best_results['Accuracy'].append(100*correct/total)
+
             best_accurancy = 100*correct/total
             torch.save(model.state_dict(),
                        './epochs/best_model.pth')
+            data_frame = pd.DataFrame(
+                data={'Epoch': best_results['Epoch'], 'Train loss': best_results['Train loss'],
+                      'Val loss': best_results['Val loss'], 'Accuracy': best_results['Accuracy']},
+                index=range(1, len(best_results['Train loss'])+1))
+            data_frame.to_csv(out_path+'train_results.csv', index_label='Num')
 
 
 if __name__ == '__main__':
+    opt = parser.parse_args()
 
     # 학습 환경 설정
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('\n\n********** Device = '+str(device)+' **********\n\n')
 
-    batch = 64
-    lr = 0.0001
-    num_epochs = 5
-    dataset_path = './data/car_data'
-    # resnet50 모델을 사용
-    model = models.resnet50(pretrained=False).to(device)
+    BATCH_SIZE = opt.batch
+    LEARNING_RATE = opt.lr
+    NUM_EPOCHS = opt.epochs
+    DATASET_PATH = opt.path
 
     # dataset
-    print('Data load...')
-
-    train_dataset = TrainDatasetFromFolder(path=dataset_path)
-    val_dataset = ValDatasetFromFolder(path=dataset_path)
-    print('Data load complete!')
+    print('Setting data...')
 
     # 이미지 크기를 임의로 128로 고정한 후, 정규화하는 과정만 진행
-    print('Data transform...')
     train_transforms = transforms.Compose([transforms.Resize((128, 128)),
                                            transforms.ToTensor(),
-                                           transforms.Normalize(load_mean(train_dataset, 'train'), load_std(train_dataset, 'train'))])
+                                           transforms.Normalize(mean=mean,
+                                                                std=std)])
     val_transforms = transforms.Compose([transforms.Resize((128, 128)),
                                          transforms.ToTensor(),
-                                         transforms.Normalize(load_mean(val_dataset, 'val'), load_std(val_dataset, 'val'))])
+                                         transforms.Normalize(mean=mean,
+                                                              std=std)])
 
-    # trainsform 정의
-    train_dataset.transform = train_transforms
-    val_dataset.transform = val_transforms
-    print('Data transform complete!')
+    train_dataset = dataset_load(
+        path=DATASET_PATH, type='train', transform=train_transforms)
+    val_dataset = dataset_load(
+        path=DATASET_PATH, type='val', transform=val_transforms)
 
-    # dataloader 정의
-    print('Define data loader...')
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch, shuffle=True, drop_last=False)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch, shuffle=False)
-    print('Define data loader complete!')
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=False)
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    print('Set parameters...')
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    print('Set ResNet50...')
+    num_classes = len(torch.load('./car_list'))
+
+    model = models.resnet50(
+        pretrained=False, num_classes=num_classes).to(device)
+
+    print('Set train parameters...')
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     loss_function = nn.CrossEntropyLoss().to(device)
 
     params = {
-        'num_epochs': num_epochs,
+        'NUM_EPOCHS': NUM_EPOCHS,
         'optimizer': optimizer,
         'loss_function': loss_function,
         'train_dataloader': train_dataloader,
         'val_dataloader': val_dataloader,
         'device': device
     }
-    print('Set parameters complete!')
 
     print('********** Training Start! **********')
+
     train(model, params)
