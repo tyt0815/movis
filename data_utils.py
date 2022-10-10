@@ -20,6 +20,8 @@ def dataset_load(path, type, transform=None):
     car_dataset = []
     car_label = []
     car_label_num = []
+    img_list = []
+    class_list = []
 
     brand_list = os.listdir(path)
 
@@ -35,6 +37,7 @@ def dataset_load(path, type, transform=None):
             year_color_list = os.listdir(path+'/'+brand+'/'+model)
 
             for year_color in year_color_list:
+                year = (year_color.split('_'))[0]
 
                 if isdir(path+'/'+brand+'/'+model+'/'+year_color) == False:
                     continue
@@ -45,18 +48,19 @@ def dataset_load(path, type, transform=None):
                 if len(dataset) == 0:
                     continue
 
-                car_dataset.append(dataset)
-                car_label.append(brand+'_'+model+'_'+year_color)
-                car_label_num.append(len(dataset))
+                if ((brand+'_'+model+'_'+year) in car_label) == False:
+                    car_label.append(brand+'_'+model+'_'+year)
+
+                img_list += dataset
+                class_list += [car_label.index(brand +
+                                               '_'+model+'_'+year)] * len(dataset)
 
     torch.save(car_label, './car_list')
 
-    img_list = []
-    class_list = []
+    for i, data in enumerate(img_list):
+        print(data)
+        print(car_label[class_list[i]])
 
-    for i, img in enumerate(car_dataset):
-        img_list += img
-        class_list += [i] * car_label_num[i]
     dataset = DatasetFromFolder(img_list, class_list, transform)
 
     return dataset
