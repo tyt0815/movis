@@ -37,7 +37,7 @@ def train(model, params):
     best_accurancy = 0
 
     for epoch in range(0, NUM_EPOCHS):
-        for data in tqdm(train_dataloader, leave=False):
+        for data in tqdm(train_dataloader, desc='train'):
             # train dataloader 로 불러온 데이터에서 이미지와 라벨을 분리
             inputs, labels = data
             inputs = inputs.to(device)
@@ -56,7 +56,7 @@ def train(model, params):
         total = 0
         correct = 0
         accuracy = []
-        for data in tqdm(val_dataloader, leave=False):
+        for data in tqdm(val_dataloader, desc='val  '):
             inputs, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -100,7 +100,7 @@ def train(model, params):
                 data={'Epoch': best_results['Epoch'], 'Train loss': best_results['Train loss'],
                       'Val loss': best_results['Val loss'], 'Accuracy': best_results['Accuracy']},
                 index=range(1, len(best_results['Train loss'])+1))
-            data_frame.to_csv(out_path+'train_results.csv', index_label='Num')
+            data_frame.to_csv(out_path+'best_results.csv', index_label='Num')
 
 
 if __name__ == '__main__':
