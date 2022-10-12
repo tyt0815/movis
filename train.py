@@ -95,7 +95,7 @@ def train(model, params):
         # 10 epochs마다 statistics 저장
         if epoch % 10 == 0 and epoch != 0:
             data_frame = pd.DataFrame(
-                data={'Train loss': results['Train loss'], 'Val loss': results['Val loss'], 'Train Accuracy': results['Train Accuracy'], 'Val Accuracy': results['Val Accuracy']}, index=range(1, epoch+1))
+                data={'Train loss': results['Train loss'], 'Val loss': results['Val loss'], 'Train Accuracy': results['Train Accuracy'], 'Val Accuracy': results['Val Accuracy']}, index=range(1, epoch+2))
             data_frame.to_csv(out_path+'train_results.csv',
                               index_label='Epoch')
 
